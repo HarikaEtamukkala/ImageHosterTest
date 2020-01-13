@@ -5,7 +5,9 @@ import ImageHoster.model.Tag;
 import ImageHoster.model.User;
 import ImageHoster.service.ImageService;
 import ImageHoster.service.TagService;
+import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.support.SecurityContextProvider;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
+import java.security.Principal;
 import java.util.*;
 
 @Controller
@@ -45,11 +48,12 @@ public class ImageController {
     //Also now you need to add the tags of an image in the Model type object
     //Here a list of tags is added in the Model type object
     //this list is then sent to 'images/image.html' file and the tags are displayed
-    @RequestMapping("/images/{title}")
-    public String showImage(@PathVariable("title") String title, Model model) {
-        Image image = imageService.getImageByTitle(title);
+    @RequestMapping("/images/{id}/{title}")
+    public String showImage(@PathVariable("id") int id,@PathVariable("title") String title, Model model) {
+        Image image = imageService.getImageByTitle(id,title);
         model.addAttribute("image", image);
         model.addAttribute("tags", image.getTags());
+        model.addAttribute("comments",image.getComments());
         return "images/image";
     }
 
@@ -92,11 +96,20 @@ public class ImageController {
     //The method first needs to convert the list of all the tags to a string containing all the tags separated by a comma and then add this string in a Model type object
     //This string is then displayed by 'edit.html' file as previous tags of an image
     @RequestMapping(value = "/editImage")
-    public String editImage(@RequestParam("imageId") Integer imageId, Model model) {
-        Image image = imageService.getImage(imageId);
+    public String editImage(@RequestParam("imageId") Integer imageId, Model model,HttpSession session) {
+        int loggedUser=((User)session.getAttribute("loggeduser")).getId();
 
+        Image image = imageService.getImage(imageId);
         String tags = convertTagsToString(image.getTags());
         model.addAttribute("image", image);
+
+        int owner= image.getUser().getId();
+        if(owner!=loggedUser){
+            model.addAttribute("tags", image.getTags());
+            model.addAttribute("editError","Only the owner of the image can edit the image");
+            model.addAttribute("comments",image.getComments());
+            return "images/image";
+        }
         model.addAttribute("tags", tags);
         return "images/edit";
     }
@@ -140,7 +153,17 @@ public class ImageController {
     //The method calls the deleteImage() method in the business logic passing the id of the image to be deleted
     //Looks for a controller method with request mapping of type '/images'
     @RequestMapping(value = "/deleteImage", method = RequestMethod.DELETE)
-    public String deleteImageSubmit(@RequestParam(name = "imageId") Integer imageId) {
+    public String deleteImageSubmit(@RequestParam(name = "imageId") Integer imageId,HttpSession session,Model model) {
+        Image image = imageService.getImage(imageId);
+        int owner = image.getUser().getId();
+        int loggedUser = ((User) session.getAttribute("loggeduser")).getId();
+        if(owner!=loggedUser){
+            model.addAttribute("image",image);
+            model.addAttribute("tags", image.getTags());
+            model.addAttribute("deleteError","Only the owner of the image can delete the image");
+            model.addAttribute("comments",image.getComments());
+            return "images/image";
+        }
         imageService.deleteImage(imageId);
         return "redirect:/images";
     }
@@ -187,4 +210,6 @@ public class ImageController {
 
         return tagString.toString();
     }
+
+
 }
